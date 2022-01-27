@@ -37,51 +37,85 @@ func (d *dec) bytes2int(b []byte) int {
 	return int(x)
 }
 
-func (d *dec) b2b(bstr []byte) []byte {
-	bstr = bstr[2 : len(bstr)-1]
-	ostr := make([]byte, len(bstr))
+func (d *dec) decBytes(istr []byte) []byte {
+	ostr := make([]byte, len(istr))
 	index := 0
-	for i := 0; i < len(bstr); i++ {
-		if bstr[i] == byte('\\') {
-			if bstr[i+1] == byte('x') {
-				otmp, _ := hex.DecodeString(string(bstr[i+2 : i+4]))
+	for i := 0; i < len(istr); i++ {
+		if istr[i] == byte('b') {
+			if istr[i+1] == byte('\'') {
+				otmp, offset := d.readto(istr[i+2:], byte('\''))
+				copy(ostr[index:], otmp)
+				index += offset
+				i += offset
+			} else if istr[i+1] == byte('"') {
+				otmp, offset := d.readto(istr[i+2:], byte('"'))
+				copy(ostr[index:], otmp)
+				index += offset
+				i += offset
+			}
+		}
+	}
+	return d.b2b(ostr)
+}
+
+func (d *dec) readto(istr []byte, end byte) ([]byte, int) {
+	for i := 0; i < len(istr); i++ {
+		if istr[i] == byte('\\') {
+			if istr[i+1] == byte('x') {
+				i += 3
+			} else if istr[i+1] == byte('b') || istr[i+1] == byte('n') || istr[i+1] == byte('r') || istr[i+1] == byte('t') || istr[i+1] == byte('\'') || istr[i+1] == byte('"') || istr[i+1] == byte('\\') {
+				i += 1
+			}
+		} else if istr[i] == end {
+			return istr[:i], i
+		}
+	}
+	return istr, 0
+}
+
+func (d *dec) b2b(istr []byte) []byte {
+	ostr := make([]byte, len(istr))
+	index := 0
+	for i := 0; i < len(istr); i++ {
+		if istr[i] == byte('\\') {
+			if istr[i+1] == byte('x') {
+				otmp, _ := hex.DecodeString(string(istr[i+2 : i+4]))
 				copy(ostr[index:], otmp)
 				i += 3
-			} else if bstr[i+1] == byte('b') {
-				copy(ostr[index:], []byte{0x08})
+			} else if istr[i+1] == byte('b') {
+				copy(ostr[index:], []byte{byte('\b')})
 				i += 1
-			} else if bstr[i+1] == byte('n') {
-				copy(ostr[index:], []byte{0x0a})
+			} else if istr[i+1] == byte('n') {
+				copy(ostr[index:], []byte{byte('\n')})
 				i += 1
-			} else if bstr[i+1] == byte('r') {
-				copy(ostr[index:], []byte{0x0d})
+			} else if istr[i+1] == byte('r') {
+				copy(ostr[index:], []byte{byte('\r')})
 				i += 1
-			} else if bstr[i+1] == byte('t') {
-				copy(ostr[index:], []byte{0x09})
+			} else if istr[i+1] == byte('t') {
+				copy(ostr[index:], []byte{byte('\t')})
 				i += 1
-			} else if bstr[i+1] == byte('\'') {
-				copy(ostr[index:], []byte{'\''})
+			} else if istr[i+1] == byte('\'') {
+				copy(ostr[index:], []byte{byte('\'')})
 				i += 1
-			} else if bstr[i+1] == byte('"') {
-				copy(ostr[index:], []byte{'"'})
+			} else if istr[i+1] == byte('"') {
+				copy(ostr[index:], []byte{byte('"')})
 				i += 1
-			} else if bstr[i+1] == byte('\\') {
-				copy(ostr[index:], []byte{'\\'})
+			} else if istr[i+1] == byte('\\') {
+				copy(ostr[index:], []byte{byte('\\')})
 				i += 1
 			}
 		} else {
-			if bytes.Equal(bstr[i:i+3], []byte{'\'', 'b', '\''}) || bytes.Equal(bstr[i:i+3], []byte{'\'', 'b', '"'}) || bytes.Equal(bstr[i:i+3], []byte{'"', 'b', '\''}) || bytes.Equal(bstr[i:i+3], []byte{'"', 'b', '"'}) {
-				i += 2
-				index--
-			} else {
-				copy(ostr[index:], bstr[i:i+1])
-			}
+			copy(ostr[index:], istr[i:i+1])
 		}
 		index++
 	}
-	for i := len(ostr) - 1; ; i-- {
-		if ostr[i] != 0 {
-			return ostr[:i+1]
+	return d.unpadding(ostr)
+}
+
+func (d *dec) unpadding(bstr []byte) []byte {
+	for i := len(bstr) - 1; ; i-- {
+		if bstr[i] != 0 {
+			return bstr[:i+1]
 		}
 	}
 }
@@ -100,7 +134,7 @@ func (d *dec) decrypt(enfile string) {
 	base64_decrypted, _ := base64.StdEncoding.DecodeString(string(text))
 	AES := newAESTool([]byte(d.key), 16)
 	dec_header, _ := AES.Decrypt(base64_decrypted)
-	dec_header = d.b2b(dec_header)
+	dec_header = d.decBytes(dec_header)
 
 	f_read.Seek(int64(enc_header_size)+8, 0)
 	newByte2 := make([]byte, fi.Size()-int64(enc_header_size)-8)
@@ -110,7 +144,7 @@ func (d *dec) decrypt(enfile string) {
 }
 
 func main() {
-	enfile := "enc.img"
+	enfile := "Z:\\enc.img"
 	for !pathExists(enfile) {
 		fmt.Print("请输入需要解密的 Recovery 文件的路径：")
 		fmt.Scanln(&enfile)
