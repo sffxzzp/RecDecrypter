@@ -144,7 +144,7 @@ func (d *dec) decrypt(enfile string) {
 }
 
 func main() {
-	enfile := "Z:\\enc.img"
+	enfile := "enc.img"
 	for !pathExists(enfile) {
 		fmt.Print("请输入需要解密的 Recovery 文件的路径：")
 		fmt.Scanln(&enfile)
